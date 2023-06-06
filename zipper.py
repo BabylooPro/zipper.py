@@ -18,26 +18,36 @@ def count_files(directory):
         file_count += len(files)
     return file_count
 
-def create_archive(archive_name, directory):
+def create_archive(archive_name, directories):
     """
     CREATES A ZIP ARCHIVE FROM A DIRECTORY
     """
-    total_files = count_files(directory)
-    processed_files = 0
-
     with zipfile.ZipFile(archive_name, 'w', zipfile.ZIP_DEFLATED) as zipf:
-        for root, dirs, files in os.walk(directory):
-            for file in files:
-                if file == '.DS_Store':
-                    continue
-                full_path = os.path.join(root, file)
-                relative_path = os.path.relpath(full_path, os.path.dirname(directory))
-                zipf.write(full_path, arcname=os.path.basename(file))
-                processed_files += 1
-                print(f"\r{' '*80}", end='') #CLEAR THE LINE
-                print(f"\rADDING FILE {processed_files}/{total_files} TO ARCHIVE ({processed_files/total_files*100:.2f}% COMPLETED) | {file}", end='')
+        total_files = sum(count_files(directory) for directory in directories) # COUNT ALL FILES IN ALL DIRECTORIES
+        processed_files = 0
 
-    print(f"\rADDING FILE {total_files}/{total_files} TO ARCHIVE (100.00% COMPLETED) | ")
+        try:
+            for directory in directories:
+                for root, dirs, files in os.walk(directory):
+                    for file in files:
+                        if file == '.DS_Store':
+                            continue
+                        full_path = os.path.join(root, file)
+                        relative_path = os.path.relpath(full_path, directory)
+                        zipf.write(full_path, arcname=relative_path)
+                        processed_files += 1
+
+                        #PROGRESS BAR
+                        percent_complete = (processed_files / total_files) * 100
+                        print("PROGRESS: [{:<50}] {:.2f}%".format('='*int(percent_complete/2), percent_complete), end='\r', flush=True)
+
+            #ENSURES THE PROGRESS BAR IS 25% OF THE TOTAL LENGTH AT THE END
+            print("\rADDING FILE {}/{} TO ARCHIVE (COMPLETED) [{}] 100.00%".format(total_files, total_files, '='*int(50*0.25)), ' ' * 20, flush=True)
+        except Exception as e:
+            print("\rERROR DURING ARCHIVING: {}".format(e))
+            print("ADDING FILE {}/{} TO ARCHIVE (INCOMPLETE) [{}] {:.2f}%".format(processed_files, total_files, '='*int((processed_files/total_files)*50), (processed_files/total_files)*100), flush=True)
+
+        print()  #PRINTS A NEWLINE AT THE END
 
 def extract_archive(archive_name, target_directory):
     """
@@ -47,16 +57,31 @@ def extract_archive(archive_name, target_directory):
         with zipfile.ZipFile(archive_name, 'r') as zipf:
             total_files = len(zipf.namelist())
             processed_files = 0
-            for file in zipf.namelist():
-                zipf.extract(file, target_directory)
-                processed_files += 1
-                print(f"\r{' '*80}", end='') #CLEAR THE LINE
-                print(f"\rEXTRACTING FILE {processed_files}/{total_files} ({processed_files/total_files*100:.2f}% COMPLETED) | {file}", end='')
 
-        print(f"\rEXTRACTING FILE {total_files}/{total_files} (100.00% COMPLETED)")
+            #CREATE A DIRECTORY FOR EXTRACTION WITH THE SAME NAME AS THE ARCHIVE
+            base_extraction_directory = os.path.join(target_directory, os.path.splitext(archive_name)[0])
+            extraction_directory = base_extraction_directory
+            i = 1
+            while os.path.exists(extraction_directory):
+                extraction_directory = "{}_{}".format(base_extraction_directory, i)
+                i += 1
+            os.makedirs(extraction_directory, exist_ok=True)
+
+            for file in zipf.namelist():
+                try:
+                    #ADJUSTS THE TARGET DIRECTORY FOR EXTRACTION
+                    zipf.extract(file, extraction_directory)
+                    processed_files += 1
+                    percent_complete = (processed_files / total_files) * 100
+                    print("PROGRESS: [{:<50}] {:.2f}%".format('='*int(percent_complete/2), percent_complete), end='\r', flush=True)
+                except Exception as e:
+                    print("\rERROR DURING EXTRACTION: {}".format(e))
+                    print("EXTRACTING FILE {}/{} (INCOMPLETE) [{}] {:.2f}%".format(processed_files, total_files, '='*int((processed_files/total_files)*50), (processed_files/total_files)*100), flush=True)
+
+        print("\rEXTRACTING FILE {}/{} (COMPLETED) [{}] 100.00%".format(total_files, total_files, '='*int(50*0.25)), ' ' * 20, flush=True)
         print("\nEXTRACTION COMPLETED SUCCESSFULLY!")
     except Exception as e:
-        print(f"\nERROR WHILE EXTRACTING ARCHIVE: {e}")
+        print(f"\nERROR WHILE OPENING ARCHIVE: {e}")
 
 if __name__ == "__main__":
     # LISTS ALL DIRECTORIES IN THE CURRENT DIRECTORY
@@ -69,7 +94,7 @@ if __name__ == "__main__":
 
     # DISPLAYS THE DIRECTORIES AND ASKS THE USER TO CHOOSE ONE OR MORE
     while True:
-        print("PLEASE CHOOSE ONE OR MORE DISRECTORIES TO ZIP (SEPARATED BY SPACES):")
+        print("PLEASE CHOOSE ONE OR MORE DIRECTORIES TO ZIP (SEPARATED BY SPACES):")
         for i, directory in enumerate(directories, start=1):
             print(f"{i}. {directory}")
 
@@ -103,5 +128,5 @@ if __name__ == "__main__":
             print("OK, SCRIPT IS ENDING.")
             exit(0)
     else:
-        for directory in chosen_directories:
-            create_archive(archive_name, directory)
+        # MOVED OUT OF THE FOR LOOP
+        create_archive(archive_name, chosen_directories)
